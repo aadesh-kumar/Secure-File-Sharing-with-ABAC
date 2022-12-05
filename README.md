@@ -1,7 +1,7 @@
 # Secure-File-Sharing-with-ABAC
 Secure File sharing between two hosts using client-server architecture with ABAC (Attribute Based Access Control) policies.
 
-#Requirements
+# Requirements
 Python 3.x
 MongoDB
 cURL command line tool
@@ -11,7 +11,7 @@ Use the following command to install all dependencies
 pip install -r requirements.txt
 ```
 
-#Usage
+# Usage
 
 Write your policies in 'policies.py' file and run it. This will create a database 'py_abac' in your MongoDB.
 Then run the 'server.py' file. This will run an HTTP server at port 8000 on your local machine.
