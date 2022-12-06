@@ -48,7 +48,7 @@ policy3 = {
 
 policy4 = {
     "uid": "4",
-    "description": "Users are allowed to look up files created by them or shared with them",
+    "description": "Users are allowed to look up files shared with them",
     "effect": "allow",
     "rules": {
         "subject": {"$.name": {"condition": "RegexMatch", "value": ".*"}},

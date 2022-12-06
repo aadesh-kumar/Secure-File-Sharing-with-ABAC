@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 
 import os
-import sys
+from getpass import getpass
 
-if len(sys.argv) == 4:
-    os.system('curl -X PUT --upload-file ' + str(sys.argv[3]) + ' http://localhost:8000/' + str(sys.argv[1]) + '/' + str(sys.argv[2]) + '/' + str(sys.argv[3]))
-else:
-    print('Usage:')
-    print('download.py Sender Receiver File')
+username = input('Username: ')
+password = getpass()
+receiver = input('Receiver: ')
+filename = input('Filename: ')
+os.system('curl -X PUT --upload-file ' + filename + ' http://localhost:8000/' + username + '/' + password + '/' + receiver + '/' + filename)

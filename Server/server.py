@@ -106,6 +106,11 @@ class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
     def do_PUT(self):
         filename = os.path.basename(self.path)
 
+        params = self.path.split('/')
+        if not self.login(params[1], params[2]):
+            self.wfile.write(bytes('Invalid Login', 'utf-8'))
+            return
+        
         # Checks if file is already uploaded
         if os.path.exists('./Files/' + filename):
             self.send_response(409, 'Conflict')
@@ -113,10 +118,9 @@ class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
             reply_body = '"%s" already exists\n' % filename
             self.wfile.write(reply_body.encode('utf-8'))
             return
-        params = self.path.split('/')
 
         # Create Policies are enforced here
-        if not createFile({"name": params[3], "created_by": params[1], "receiver": params[2]}):
+        if not createFile({"name": params[4], "created_by": params[1], "receiver": params[3]}):
             self.send_response(404)
             self.end_headers()
             reply_body = 'Policy Error\n'
@@ -145,51 +149,78 @@ class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
         try:
             params = self.path.split('/')
             # Delete Policies are enforced here.
-            if not deleteFile(params[2], params[1]):
+            if not self.login(params[1], params[2]):
+                self.send_response(404)
+                self.wfile.write(bytes('Invalid Login', 'utf-8'))
+                return
+            if not deleteFile(params[3], params[1]):
                 self.send_response(404)
                 self.end_headers()
                 reply_body = 'Policy Error\n'
                 self.wfile.write(reply_body.encode('utf-8'))   
                 return
 
-            os.remove('./Files/' + params[2])
+            os.remove('./Files/' + params[3])
             self.send_response(200)
             self.send_header('Content-type','text/plain')
             self.end_headers()
-            message = "Deleted " + params[2]
+            message = "Deleted " + params[3]
             self.wfile.write(bytes(message, "utf8"))
         except Exception as e:
             print(e)
     
+    def lookup(self, userName):
+        files = listFiles(userName)
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(bytes('Files shared with you:\n', 'utf-8'))
+        for file in files:
+            self.wfile.write(bytes(file + '\n', 'utf-8'))
+    
+    def get(self, filename, username):
+        if not getFile(filename, username):
+            self.send_response(404)
+            self.end_headers()
+            reply_body = 'Policy Error\n'
+            self.wfile.write(reply_body.encode('utf-8'))
+            return
+        self.send_response(200)
+        self.send_header('Content-type','application/octet-stream')
+        self.send_header('Content-Disposition', 'attachment; filename=%s' % username)
+        self.end_headers()
+
+        decryptFile(filename)
+
+        with open('./Files/' + filename, 'rb') as f:
+            self.wfile.write(f.read())
+
+        encryptFile(filename)
+    
+    def login(self, username, password):
+        client = MongoClient()
+        data = client.py_abac.users.find_one({'name': username})
+        if data:
+            return password == data['password']
+        else:
+            client.py_abac.users.insert_one({'name': username, 'password': password})
+            return True
+    
     def do_GET(self):
         try:
             params = self.path.split('/')
-            if len(params) < 3:
+            if not self.login(params[2], params[3]):
+                self.send_response(404)
+                self.send_header('Content-type','text/plain')
+                self.end_headers()
+                self.wfile.write(bytes('Invalid Login', 'utf-8'))
+                return
+            if params[1] == 'list':
                 # Lookup request
-                files = listFiles(params[1])
-                self.send_response(200)
-                self.send_header('Content-Type', 'text/plain')
-                self.end_headers()
-                for file in files:
-                    self.wfile.write(bytes(file, 'utf-8'))
-            else:
-                # Get request
+                self.lookup(params[2])
+            elif params[1] == 'download':
                 # Get Policies are enforced here.
-                if not getFile(params[2], params[1]):
-                    self.send_response(404)
-                    self.end_headers()
-                    reply_body = 'Policy Error\n'
-                    self.wfile.write(reply_body.encode('utf-8'))
-                    return
-                self.send_response(200)
-                self.send_header('Content-type','application/octet-stream')
-                self.send_header('Content-Disposition', 'attachment; filename=%s' % params[2])
-                self.end_headers()
-
-                decryptFile(params[2])
-
-                with open('./Files/' + params[2], 'rb') as f:
-                    self.wfile.write(f.read())
+                self.get(params[4], params[2])
             
         except Exception as e:
             print(e)
