@@ -38,12 +38,14 @@ def evaluatePolicy(subject, resource, action, context):
     # Return policy decision whether to allow or deny access.
     return pdp.is_allowed(request)
 
-def listFiles(Name):
+def listFiles(userName):
     client = MongoClient()
-    db = client['py_abac']
-    collection = db['files']
-    results = collection.find({"$or":[ {"created_by":Name}, {"receiver":Name}]})
-    return results
+    files = client.py_abac.files.find()
+    userFiles = []
+    for file in files:
+        if evaluatePolicy(userName, file['name'], 'lookup', {'created_by': file['created_by'], 'receiver': file['receiver']}):
+            userFiles.append(file['name'])
+    return userFiles
 
 def getFile(fileName, userName):
     client = MongoClient()
@@ -70,6 +72,34 @@ def deleteFile(fileName, creator):
         return True
     else:
         return False
+
+def decryptFile(FileName):
+    with open('FileKey.key', 'rb') as filekey:
+        key = filekey.read()
+
+    fernet = Fernet(key)
+
+    with open('./Files/' + FileName, 'rb') as enc_file:
+        encrypted = enc_file.read()
+
+    decrypted = fernet.decrypt(encrypted)
+    
+    with open('./Files/' + FileName, 'wb') as dec_file:
+        dec_file.write(decrypted)
+
+def encryptFile(filename):
+    with open('FileKey.key', 'rb') as filekey:
+        key = filekey.read()
+    
+    fernet = Fernet(key)
+
+    with open('./Files/' + filename, 'rb') as file:
+        original = file.read()
+        
+    encrypted = fernet.encrypt(original)
+    
+    with open('./Files/' + filename, 'wb') as encrypted_file:
+        encrypted_file.write(encrypted)
 
 class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
     
@@ -104,18 +134,7 @@ class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
                 output_file.write(new_read)
         
         # File is encrypted for security reasons.
-        with open('FileKey.key', 'rb') as filekey:
-            key = filekey.read()
-        
-        fernet = Fernet(key)
-
-        with open('./Files/' + filename, 'rb') as file:
-            original = file.read()
-            
-        encrypted = fernet.encrypt(original)
-        
-        with open('./Files/' + filename, 'wb') as encrypted_file:
-            encrypted_file.write(encrypted)
+        encryptFile(filename)
         
         self.send_response(201, 'Created')
         self.end_headers()
@@ -145,34 +164,32 @@ class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
     def do_GET(self):
         try:
             params = self.path.split('/')
-            # Get Policies are enforced here.
-            if not getFile(params[2], params[1]):
-                self.send_response(404)
+            if len(params) < 3:
+                # Lookup request
+                files = listFiles(params[1])
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/plain')
                 self.end_headers()
-                reply_body = 'Policy Error\n'
-                self.wfile.write(reply_body.encode('utf-8'))
-                return
-            self.send_response(200)
-            self.send_header('Content-type','application/octet-stream')
-            self.send_header('Content-Disposition', 'attachment; filename=%s' % params[2])
-            self.end_headers()
+                for file in files:
+                    self.wfile.write(bytes(file, 'utf-8'))
+            else:
+                # Get request
+                # Get Policies are enforced here.
+                if not getFile(params[2], params[1]):
+                    self.send_response(404)
+                    self.end_headers()
+                    reply_body = 'Policy Error\n'
+                    self.wfile.write(reply_body.encode('utf-8'))
+                    return
+                self.send_response(200)
+                self.send_header('Content-type','application/octet-stream')
+                self.send_header('Content-Disposition', 'attachment; filename=%s' % params[2])
+                self.end_headers()
 
-            # File is decrypted before sending it back.
-            with open('FileKey.key', 'rb') as filekey:
-                key = filekey.read()
+                decryptFile(params[2])
 
-            fernet = Fernet(key)
-
-            with open('./Files/' + params[2], 'rb') as enc_file:
-                encrypted = enc_file.read()
-
-            decrypted = fernet.decrypt(encrypted)
-            
-            with open('./Files/' + params[2], 'wb') as dec_file:
-                dec_file.write(decrypted)
-
-            with open('./Files/' + params[2], 'rb') as f:
-                self.wfile.write(f.read())
+                with open('./Files/' + params[2], 'rb') as f:
+                    self.wfile.write(f.read())
             
         except Exception as e:
             print(e)

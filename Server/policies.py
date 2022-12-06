@@ -45,7 +45,21 @@ policy3 = {
     "targets": {},
     "priority": 0
 }
-policies = [policy1, policy2, policy3]
+
+policy4 = {
+    "uid": "4",
+    "description": "Users are allowed to look up files created by them or shared with them",
+    "effect": "allow",
+    "rules": {
+        "subject": {"$.name": {"condition": "RegexMatch", "value": ".*"}},
+        "resource": {"$.name": {"condition": "RegexMatch", "value": ".*"}},
+        "action": {"$.method": {"condition": "Equals", "value": "lookup"}},
+        "context": {"$.receiver": {"condition": "EqualsAttribute", "ace": "subject", "path": "$.name"}}
+    },
+    "targets": {},
+    "priority": 0
+}
+policies = [policy4]
 
 # Parse JSON and create policy object
 for i in range(0,len(policies)):
